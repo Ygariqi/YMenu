@@ -9,6 +9,82 @@ local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 
+--// WHITELIST ACCESS CHECK
+do
+    -- CHANGE THIS URL to your raw GitHub whitelist file
+    local WHITELIST_URL = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/YMenu_Whitelist.txt"
+    
+    local whitelistOk, whitelist = pcall(function()
+        local raw = game:HttpGet(WHITELIST_URL)
+        local names = {}
+        for line in raw:gmatch("[^\r\n]+") do
+            local trimmed = line:match("^%s*(.-)%s*$")
+            if trimmed and trimmed ~= "" then
+                table.insert(names, trimmed)
+            end
+        end
+        return names
+    end)
+    
+    if not whitelistOk or type(whitelist) ~= "table" then whitelist = {} end
+    
+    local isAllowed = false
+    for _, name in pairs(whitelist) do
+        if name == player.Name then isAllowed = true; break end
+    end
+    
+    if not isAllowed then
+        -- Show styled Access Denied window
+        local sg = Instance.new("ScreenGui"); sg.Name = "YMenu_AccessDenied"; sg.ResetOnSpawn = false; sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        pcall(function() sg.Parent = game:GetService("CoreGui") end)
+        if not sg.Parent then sg.Parent = player:WaitForChild("PlayerGui") end
+        
+        -- Dimmed background
+        local bg = Instance.new("Frame"); bg.Size = UDim2.new(1,0,1,0); bg.BackgroundColor3 = Color3.new(0,0,0); bg.BackgroundTransparency = 0.4; bg.BorderSizePixel = 0; bg.Parent = sg
+        
+        -- Main panel
+        local panel = Instance.new("Frame"); panel.Size = UDim2.new(0,480,0,280); panel.Position = UDim2.new(0.5,-240,0.5,-140)
+        panel.BackgroundColor3 = Color3.fromRGB(18,15,35); panel.BorderSizePixel = 0; panel.Parent = sg
+        local panelCorner = Instance.new("UICorner"); panelCorner.CornerRadius = UDim.new(0,14); panelCorner.Parent = panel
+        local panelStroke = Instance.new("UIStroke"); panelStroke.Color = Color3.fromRGB(255,50,50); panelStroke.Thickness = 2; panelStroke.Transparency = 0.3; panelStroke.Parent = panel
+        
+        -- Red glow gradient on stroke
+        local strokeGrad = Instance.new("UIGradient"); strokeGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(255,50,50)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(200,30,30)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(255,50,50))
+        }); strokeGrad.Parent = panelStroke
+        
+        -- Lock icon
+        local icon = Instance.new("TextLabel"); icon.Size = UDim2.new(0,70,0,70); icon.Position = UDim2.new(0.5,-35,0,20)
+        icon.BackgroundTransparency = 1; icon.Text = "🔒"; icon.TextSize = 48; icon.Font = Enum.Font.GothamBold; icon.Parent = panel
+        
+        -- Title
+        local title = Instance.new("TextLabel"); title.Size = UDim2.new(1,-40,0,36); title.Position = UDim2.new(0,20,0,100)
+        title.BackgroundTransparency = 1; title.Text = "ACCESS DENIED"; title.TextColor3 = Color3.fromRGB(255,70,70)
+        title.TextSize = 24; title.Font = Enum.Font.GothamBold; title.Parent = panel
+        
+        -- Message
+        local msg = Instance.new("TextLabel"); msg.Size = UDim2.new(1,-40,0,50); msg.Position = UDim2.new(0,20,0,145)
+        msg.BackgroundTransparency = 1; msg.Text = "You do not have permission to use this script.\nContact the administrator for access."
+        msg.TextColor3 = Color3.fromRGB(180,180,200); msg.TextSize = 14; msg.Font = Enum.Font.Gotham; msg.TextWrapped = true; msg.Parent = panel
+        
+        -- Username display
+        local userLbl = Instance.new("TextLabel"); userLbl.Size = UDim2.new(1,-40,0,20); userLbl.Position = UDim2.new(0,20,0,200)
+        userLbl.BackgroundTransparency = 1; userLbl.Text = "Username: " .. player.Name
+        userLbl.TextColor3 = Color3.fromRGB(120,120,140); userLbl.TextSize = 12; userLbl.Font = Enum.Font.Gotham; userLbl.Parent = panel
+        
+        -- Close button
+        local closeBtn = Instance.new("TextButton"); closeBtn.Size = UDim2.new(0,100,0,32); closeBtn.Position = UDim2.new(0.5,-50,1,-50)
+        closeBtn.BackgroundColor3 = Color3.fromRGB(255,50,50); closeBtn.Text = "CLOSE"; closeBtn.TextColor3 = Color3.new(1,1,1)
+        closeBtn.TextSize = 14; closeBtn.Font = Enum.Font.GothamBold; closeBtn.BorderSizePixel = 0; closeBtn.Parent = panel
+        local btnCorner = Instance.new("UICorner"); btnCorner.CornerRadius = UDim.new(0,8); btnCorner.Parent = closeBtn
+        closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+        
+        return -- Stop script execution
+    end
+end
+
 --// V64: LOCALIZATION SYSTEM (INJECTED)
 local currentLang = "ENG" -- Default
 local LOCALES = {
