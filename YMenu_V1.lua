@@ -12,7 +12,7 @@ local player = Players.LocalPlayer
 --// WHITELIST ACCESS CHECK
 do
     -- CHANGE THIS URL to your raw GitHub whitelist file
-    local WHITELIST_URL = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/YMenu_Whitelist.txt"
+    local WHITELIST_URL = "https://raw.githubusercontent.com/Ygariqi/YMenu/refs/heads/main/YMenu_Whitelist.txt"
     
     local whitelistOk, whitelist = pcall(function()
         local raw = game:HttpGet(WHITELIST_URL)
