@@ -56,7 +56,10 @@ local LOCALES = {
         ["STAT_DE"] = "Разрушительная энергия",
         ["SUB_PRESTIGE"] = "Престиж",
         ["AUTO_PRESTIGE"] = "Авто престиж",
-        ["PRESTIGE_TEXT"] = "Престиж: "
+        ["PRESTIGE_TEXT"] = "Престиж: ",
+        ["SUB_LVL_FARM"] = "Фарм Уровня",
+        ["SELECT_LVL_FARM"] = "Выбор режима",
+        ["AUTO_LVL_FARM"] = "Авто фарм уровня"
     },
     ["ENG"] = {
         ["TITLE"] = "YMenu V1",
@@ -102,7 +105,10 @@ local LOCALES = {
         ["STAT_DE"] = "Destructive Energy",
         ["SUB_PRESTIGE"] = "Prestige",
         ["AUTO_PRESTIGE"] = "Auto Prestige",
-        ["PRESTIGE_TEXT"] = "Prestige: "
+        ["PRESTIGE_TEXT"] = "Prestige: ",
+        ["SUB_LVL_FARM"] = "Lvl Farm",
+        ["SELECT_LVL_FARM"] = "Select Mode",
+        ["AUTO_LVL_FARM"] = "Auto Lvl Farm"
     }
 }
 
@@ -121,6 +127,8 @@ local autoRaid = false
 local autoRestart = false
 local autoAddStats = false
 local autoPrestige = false
+local autoLvlFarm = false
+local selectedLvlFarm = "None"
 
 -- ESP CATEGORIES
 local espItems = false
@@ -173,12 +181,13 @@ local STAT_NAME_MAP = {
 local RAID_BOSSES = {
     ["Avdol"] = {TalkName = "Muhammad Avdol", BossName = "Muhammad Avdol"},
     ["Kira"] = {TalkName = "Yoshikage Kira", BossName = "Yoshikage Kira"},
-    ["Jotaro"] = {TalkName = "Chumbo", BossName = "Jotaro Kujo"}
+    ["Jotaro"] = {TalkName = "Chumbo", BossName = "Jotaro Kujo"},
+    ["Dio"] = {TalkName = "???", BossName = "DIO", TwoPhase = true}
 }
 
 --// GUI (RESTORED TO FULL VERBOSE STYLE)
 local gui = Instance.new("ScreenGui")
-gui.Name = "StandFarmUltimateV64_MAX_VERBOSE"
+gui.Name = "YMenu_V1_Premium"
 gui.DisplayOrder = 999
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
 gui.Parent = game.CoreGui
@@ -186,15 +195,21 @@ gui.Parent = game.CoreGui
 local frame = Instance.new("Frame")
 frame.Size = UDim2.new(0,550,0,450)
 frame.Position = UDim2.new(0.5,-275,0.5,-225)
-frame.BackgroundColor3 = Color3.fromRGB(20,22,30)
+frame.BackgroundColor3 = Color3.fromRGB(14,16,24)
 frame.Active = true
 frame.ClipsDescendants = true
 frame.ZIndex = 110
 frame.Parent = gui
 
 local uiCorner = Instance.new("UICorner")
-uiCorner.CornerRadius = UDim.new(0,12)
+uiCorner.CornerRadius = UDim.new(0,14)
 uiCorner.Parent = frame
+
+local frameStroke = Instance.new("UIStroke")
+frameStroke.Color = Color3.fromRGB(60,40,120)
+frameStroke.Thickness = 1.5
+frameStroke.Transparency = 0.5
+frameStroke.Parent = frame
 
 -- SMART CLICKER HOVER DETECTION
 frame.MouseEnter:Connect(function() 
@@ -206,14 +221,25 @@ end)
 
 local topBar = Instance.new("Frame")
 topBar.Size = UDim2.new(1,0,0,40)
-topBar.BackgroundColor3 = Color3.fromRGB(25,27,35)
+topBar.BackgroundColor3 = Color3.fromRGB(18,20,30)
 topBar.Active = true
 topBar.ZIndex = 115
 topBar.Parent = frame
 
 local topBarCorner = Instance.new("UICorner")
-topBarCorner.CornerRadius = UDim.new(0,12)
+topBarCorner.CornerRadius = UDim.new(0,14)
 topBarCorner.Parent = topBar
+
+-- ACCENT STRIPE (gradient line under topbar)
+local accentLine = Instance.new("Frame")
+accentLine.Size = UDim2.new(1,0,0,2)
+accentLine.Position = UDim2.new(0,0,1,-2)
+accentLine.BorderSizePixel = 0
+accentLine.ZIndex = 116
+accentLine.Parent = topBar
+local accentGrad = Instance.new("UIGradient")
+accentGrad.Color = ColorSequence.new(Color3.fromRGB(120,80,220), Color3.fromRGB(60,120,255))
+accentGrad.Parent = accentLine
 
 local topTitle = Instance.new("TextLabel")
 topTitle.Size = UDim2.new(0,150,1,0)
@@ -262,13 +288,18 @@ mainContainer.Parent = frame
 
 local sidebar = Instance.new("Frame")
 sidebar.Size = UDim2.new(0,140,1,0)
-sidebar.BackgroundColor3 = Color3.fromRGB(15,17,25)
+sidebar.BackgroundColor3 = Color3.fromRGB(10,12,20)
 sidebar.ZIndex = 115
 sidebar.Parent = mainContainer
 
 local sidebarCorner = Instance.new("UICorner")
-sidebarCorner.CornerRadius = UDim.new(0,12)
+sidebarCorner.CornerRadius = UDim.new(0,14)
 sidebarCorner.Parent = sidebar
+
+local sideGrad = Instance.new("UIGradient")
+sideGrad.Color = ColorSequence.new(Color3.fromRGB(14,16,26), Color3.fromRGB(24,26,38))
+sideGrad.Rotation = 90
+sideGrad.Parent = sidebar
 
 local sideCredits = Instance.new("TextLabel")
 sideCredits.Size = UDim2.new(1,-10,0,60)
@@ -363,23 +394,80 @@ end)
 local updatableItems = {}
 
 -- NAV BUTTONS
+local activeNavBtn = nil
 local function createNav(key, pos, callback)
     local b = Instance.new("TextButton")
     b.Size = UDim2.new(1,-20,0,38)
     b.Position = UDim2.new(0,10,0,pos)
     b.Text = getLoc(key)
     b.TextSize = 15
-    b.BackgroundColor3 = Color3.fromRGB(30,32,40)
-    b.TextColor3 = Color3.new(1,1,1)
+    b.BackgroundColor3 = Color3.fromRGB(58,60,82)
+    b.TextColor3 = Color3.fromRGB(255,255,255)
     b.Font = Enum.Font.GothamSemibold
     b.ZIndex = 150
+    b.AutoButtonColor = false
     b.Parent = sidebar
     
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0,8)
+    corner.CornerRadius = UDim.new(0,10)
     corner.Parent = b
-    
-    b.MouseButton1Click:Connect(callback)
+
+    -- Gradient overlay for active state
+    local navGrad = Instance.new("UIGradient")
+    navGrad.Color = ColorSequence.new(Color3.fromRGB(58,60,82), Color3.fromRGB(58,60,82))
+    navGrad.Rotation = 0
+    navGrad.Parent = b
+
+    -- Left accent bar (thin, rounded, gradient-colored)
+    local accentBar = Instance.new("Frame")
+    accentBar.Size = UDim2.new(0,3,0.5,0)
+    accentBar.Position = UDim2.new(0,1,0.25,0)
+    accentBar.BackgroundColor3 = Color3.fromRGB(130,80,255)
+    accentBar.BorderSizePixel = 0
+    accentBar.Visible = false
+    accentBar.ZIndex = 155
+    accentBar.Parent = b
+    Instance.new("UICorner",accentBar).CornerRadius = UDim.new(1,0)
+    local accentBarGrad = Instance.new("UIGradient")
+    accentBarGrad.Color = ColorSequence.new(Color3.fromRGB(130,80,255), Color3.fromRGB(80,140,255))
+    accentBarGrad.Rotation = 90
+    accentBarGrad.Parent = accentBar
+
+    -- Hover effect
+    b.MouseEnter:Connect(function()
+        if activeNavBtn ~= b then
+            b.BackgroundColor3 = Color3.fromRGB(70,72,95)
+        end
+    end)
+    b.MouseLeave:Connect(function()
+        if activeNavBtn ~= b then
+            b.BackgroundColor3 = Color3.fromRGB(58,60,82)
+        end
+    end)
+
+    b.MouseButton1Click:Connect(function()
+        -- Deactivate previous
+        if activeNavBtn then 
+            activeNavBtn.BackgroundColor3 = Color3.fromRGB(50,52,72)
+            activeNavBtn.TextColor3 = Color3.fromRGB(255,255,255)
+            local prevAcc = activeNavBtn:FindFirstChild("Frame")
+            if prevAcc then prevAcc.Visible = false end
+            local prevStroke = activeNavBtn:FindFirstChildOfClass("UIStroke")
+            if prevStroke then prevStroke:Destroy() end
+        end
+        -- Activate current
+        b.BackgroundColor3 = Color3.fromRGB(30,25,55)
+        b.TextColor3 = Color3.new(1,1,1)
+        accentBar.Visible = true
+        -- Add subtle glow stroke
+        local glowStroke = Instance.new("UIStroke")
+        glowStroke.Color = Color3.fromRGB(100,70,200)
+        glowStroke.Thickness = 1
+        glowStroke.Transparency = 0.6
+        glowStroke.Parent = b
+        activeNavBtn = b
+        callback()
+    end)
     table.insert(updatableItems, {Obj = b, Key = key, Type = "Text"})
     return b
 end
@@ -419,50 +507,88 @@ end
 
 local function createToggle(key, pos, parent)
     local container = Instance.new("TextButton")
-    container.Size = UDim2.new(1,-40,0,55)
+    container.Size = UDim2.new(1,-40,0,50)
     container.Position = UDim2.new(0,20,0,pos)
-    container.BackgroundColor3 = Color3.fromRGB(30,32,40)
+    container.BackgroundColor3 = Color3.fromRGB(20,22,32)
     container.Text = getLoc(key)
-    container.TextSize = 15
+    container.TextSize = 14
     container.Font = Enum.Font.GothamSemibold
-    container.TextColor3 = Color3.new(1,1,1)
+    container.TextColor3 = Color3.fromRGB(210,210,220)
     container.TextXAlignment = Enum.TextXAlignment.Left
+    container.AutoButtonColor = false
     container.ZIndex = 120
     container.Parent = parent
     
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0,10)
     corner.Parent = container
+
+    -- Subtle border stroke
+    local borderStroke = Instance.new("UIStroke")
+    borderStroke.Color = Color3.fromRGB(40,42,60)
+    borderStroke.Thickness = 1
+    borderStroke.Transparency = 0.5
+    borderStroke.Parent = container
     
     local padding = Instance.new("UIPadding")
     padding.PaddingLeft = UDim.new(0, 15)
     padding.Parent = container
 
-    local accent = Instance.new("Frame")
-    accent.Size = UDim2.new(0,100,0,35)
-    accent.Position = UDim2.new(1,-110,0.5,-17.5)
-    accent.BackgroundColor3 = Color3.fromRGB(200,50,50)
-    accent.ZIndex = 125
-    accent.Parent = container
+    -- Pill-shaped toggle switch track
+    local track = Instance.new("Frame")
+    track.Size = UDim2.new(0,52,0,26)
+    track.Position = UDim2.new(1,-67,0.5,-13)
+    track.BackgroundColor3 = Color3.fromRGB(55,35,35)
+    track.ZIndex = 125
+    track.Parent = container
     
-    local aCorner = Instance.new("UICorner")
-    aCorner.CornerRadius = UDim.new(0,10)
-    aCorner.Parent = accent
+    local trackCorner = Instance.new("UICorner")
+    trackCorner.CornerRadius = UDim.new(1,0)
+    trackCorner.Parent = track
 
-    local status = Instance.new("TextLabel")
-    status.Size = UDim2.new(1,0,1,0)
-    status.BackgroundTransparency = 1
-    status.Text = "OFF"
-    status.TextSize = 16
-    status.Font = Enum.Font.GothamBold
-    status.TextColor3 = Color3.new(1,1,1)
-    status.ZIndex = 130
-    status.Parent = accent
-    
+    -- Pill knob (circle)
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0,20,0,20)
+    knob.Position = UDim2.new(0,3,0.5,-10)
+    knob.BackgroundColor3 = Color3.fromRGB(180,60,60)
+    knob.ZIndex = 130
+    knob.Parent = track
+    Instance.new("UICorner",knob).CornerRadius = UDim.new(1,0)
+
+    -- Hover
+    container.MouseEnter:Connect(function()
+        container.BackgroundColor3 = Color3.fromRGB(25,27,40)
+    end)
+    container.MouseLeave:Connect(function()
+        container.BackgroundColor3 = Color3.fromRGB(20,22,32)
+    end)
+
     table.insert(updatableItems, {Obj = container, Key = key, Type = "Text"})
     local function update(state)
-        accent.BackgroundColor3 = state and Color3.fromRGB(60,170,80) or Color3.fromRGB(200,50,50)
-        status.Text = state and "ON" or "OFF"
+        if state then
+            track.BackgroundColor3 = Color3.fromRGB(30,55,40)
+            knob.Position = UDim2.new(1,-23,0.5,-10)
+            knob.BackgroundColor3 = Color3.fromRGB(60,210,100)
+            borderStroke.Color = Color3.fromRGB(50,120,70)
+            borderStroke.Transparency = 0.4
+            -- Knob glow
+            local glowStroke = knob:FindFirstChildOfClass("UIStroke")
+            if not glowStroke then
+                glowStroke = Instance.new("UIStroke")
+                glowStroke.Parent = knob
+            end
+            glowStroke.Color = Color3.fromRGB(80,255,120)
+            glowStroke.Thickness = 2
+            glowStroke.Transparency = 0.3
+        else
+            track.BackgroundColor3 = Color3.fromRGB(55,35,35)
+            knob.Position = UDim2.new(0,3,0.5,-10)
+            knob.BackgroundColor3 = Color3.fromRGB(180,60,60)
+            borderStroke.Color = Color3.fromRGB(40,42,60)
+            borderStroke.Transparency = 0.5
+            local glowStroke = knob:FindFirstChildOfClass("UIStroke")
+            if glowStroke then glowStroke:Destroy() end
+        end
     end
     return container, update
 end
@@ -489,22 +615,98 @@ end
 
 local function createDropdown(titleKey, options, pos, parent, callback)
     local container = Instance.new("Frame")
-    container.Size = UDim2.new(1,-40,0,50); container.Position = UDim2.new(0,20,0,pos); container.BackgroundColor3 = Color3.fromRGB(30,32,40); container.ZIndex = 150; container.Parent = parent
+    container.Size = UDim2.new(1,-40,0,46)
+    container.Position = UDim2.new(0,20,0,pos)
+    container.BackgroundColor3 = Color3.fromRGB(20,22,32)
+    container.ZIndex = 150
+    container.Parent = parent
     Instance.new("UICorner",container).CornerRadius = UDim.new(0,10)
 
+    -- Border stroke
+    local ddStroke = Instance.new("UIStroke")
+    ddStroke.Color = Color3.fromRGB(50,45,80)
+    ddStroke.Thickness = 1
+    ddStroke.Transparency = 0.4
+    ddStroke.Parent = container
+
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1,0,1,0); btn.BackgroundTransparency = 1; btn.Text = getLoc(titleKey)..": None"; btn.TextSize = 13; btn.Font = Enum.Font.GothamSemibold; btn.TextColor3 = Color3.new(1,1,1); btn.ZIndex = 155; btn.Parent = container
+    btn.Size = UDim2.new(1,-30,1,0)
+    btn.Position = UDim2.new(0,12,0,0)
+    btn.BackgroundTransparency = 1
+    btn.Text = getLoc(titleKey)..": None"
+    btn.TextSize = 13
+    btn.Font = Enum.Font.GothamSemibold
+    btn.TextColor3 = Color3.fromRGB(210,210,225)
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.AutoButtonColor = false
+    btn.ZIndex = 155
+    btn.Parent = container
+
+    -- Chevron arrow
+    local arrow = Instance.new("TextLabel")
+    arrow.Size = UDim2.new(0,20,0,20)
+    arrow.Position = UDim2.new(1,-25,0.5,-10)
+    arrow.BackgroundTransparency = 1
+    arrow.Text = "▼"
+    arrow.TextSize = 10
+    arrow.Font = Enum.Font.GothamBold
+    arrow.TextColor3 = Color3.fromRGB(130,100,220)
+    arrow.ZIndex = 156
+    arrow.Parent = container
 
     local list = Instance.new("Frame")
-    list.Size = UDim2.new(1,0,0,#options * 40); list.Position = UDim2.new(0,0,1,5); list.BackgroundColor3 = Color3.fromRGB(25,27,33); list.BorderSizePixel = 0; list.Visible = false; list.ZIndex = 1000; list.Parent = container
-    Instance.new("UICorner",list).CornerRadius = UDim.new(0,8)
+    list.Size = UDim2.new(1,0,0,#options * 38)
+    list.Position = UDim2.new(0,0,1,4)
+    list.BackgroundColor3 = Color3.fromRGB(18,20,30)
+    list.BorderSizePixel = 0
+    list.Visible = false
+    list.ZIndex = 1000
+    list.ClipsDescendants = true
+    list.Parent = container
+    Instance.new("UICorner",list).CornerRadius = UDim.new(0,10)
+    local listStroke = Instance.new("UIStroke")
+    listStroke.Color = Color3.fromRGB(60,50,100)
+    listStroke.Thickness = 1
+    listStroke.Transparency = 0.4
+    listStroke.Parent = list
 
-    btn.MouseButton1Click:Connect(function() list.Visible = not list.Visible; container.ZIndex = list.Visible and 200 or 150 end)
+    btn.MouseButton1Click:Connect(function()
+        list.Visible = not list.Visible
+        container.ZIndex = list.Visible and 200 or 150
+        arrow.Text = list.Visible and "▲" or "▼"
+    end)
 
     for i, name in pairs(options) do
         local opt = Instance.new("TextButton")
-        opt.Size = UDim2.new(1,0,0,40); opt.Position = UDim2.new(0,0,0,(i-1)*40); opt.BackgroundTransparency = 1; opt.Text = name; opt.TextSize = 14; opt.Font = Enum.Font.Gotham; opt.TextColor3 = Color3.new(0.8,0.8,0.8); opt.ZIndex = 1001; opt.Parent = list
-        opt.MouseButton1Click:Connect(function() btn.Text = getLoc(titleKey)..": "..name; list.Visible = false; container.ZIndex = 150; callback(name) end)
+        opt.Size = UDim2.new(1,-10,0,38)
+        opt.Position = UDim2.new(0,5,0,(i-1)*38)
+        opt.BackgroundColor3 = Color3.fromRGB(18,20,30)
+        opt.AutoButtonColor = false
+        opt.Text = name
+        opt.TextSize = 13
+        opt.Font = Enum.Font.GothamSemibold
+        opt.TextColor3 = Color3.fromRGB(190,190,210)
+        opt.ZIndex = 1001
+        opt.Parent = list
+        Instance.new("UICorner",opt).CornerRadius = UDim.new(0,8)
+        
+        -- Hover effect on options
+        opt.MouseEnter:Connect(function()
+            opt.BackgroundColor3 = Color3.fromRGB(35,30,60)
+            opt.TextColor3 = Color3.new(1,1,1)
+        end)
+        opt.MouseLeave:Connect(function()
+            opt.BackgroundColor3 = Color3.fromRGB(18,20,30)
+            opt.TextColor3 = Color3.fromRGB(190,190,210)
+        end)
+        
+        opt.MouseButton1Click:Connect(function()
+            btn.Text = getLoc(titleKey)..": "..name
+            list.Visible = false
+            container.ZIndex = 150
+            arrow.Text = "▼"
+            callback(name)
+        end)
     end
     table.insert(updatableItems, {Obj = btn, Key = titleKey, Type = "Dropdown", Val = "None"})
 end
@@ -552,10 +754,13 @@ createSubTitle("SUB_QUESTS", 120, farmTab)
 local questBtn, updateQuest = createToggle("AUTO_QUEST", 150, farmTab)
 createSubTitle("SUB_PRESTIGE", 220, farmTab)
 local prestigeBtn, updatePrestige = createToggle("AUTO_PRESTIGE", 250, farmTab)
+createSubTitle("SUB_LVL_FARM", 320, farmTab)
+createDropdown("SELECT_LVL_FARM", {"PVE Mission Boards", "Boss Farm"}, 350, farmTab, function(val) selectedLvlFarm = val end)
+local lvlFarmBtn, updateLvlFarm = createToggle("AUTO_LVL_FARM", 415, farmTab)
 
 -- V64: SETUP RAIDS TAB
 createSubTitle("SELECT_BOSS", 20, raidsTab)
-createDropdown("SELECT_BOSS", {"Avdol", "Kira", "Jotaro"}, 50, raidsTab, function(val) selectedRaidBoss = val end)
+createDropdown("SELECT_BOSS", {"Avdol", "Kira", "Jotaro", "Dio"}, 50, raidsTab, function(val) selectedRaidBoss = val end)
 local raidToggleBtn, updateRaid = createToggle("AUTO_RAID", 115, raidsTab)
 local restartToggleBtn, updateRestart = createToggle("AUTO_RESTART", 180, raidsTab)
 
@@ -734,36 +939,99 @@ local function removeESP(obj)
     if obj:FindFirstChild("V63_BOX") then obj.V63_BOX:Destroy() end
     if obj:FindFirstChild("V63_BB") then obj.V63_BB:Destroy() end
 end
-
-task.spawn(function()
-    while task.wait(0.3) do
-        -- Items ESP
-        for _, o in pairs(workspace:GetChildren()) do
-            local isArrow = (o.Name == "Stand Arrow" or o:FindFirstChild("Stand Arrow"))
-            if espItems and isArrow then 
-                applyESP(o, Color3.fromRGB(230,190,0), "Stand Arrow") 
-            elseif o:FindFirstChild("V63_HL") then 
-                -- Only remove if it was an ESP item before or categories changed
-                if not isArrow or not espItems then removeESP(o) end
+-- ESP: Instant item detection via ChildAdded (no lag)
+local espTrackedItems = {}
+workspace.ChildAdded:Connect(function(o)
+    task.wait(0.1)
+    if espItems then
+        local itemName = o.Name
+        if itemName == "Model" then for _, c in pairs(o:GetChildren()) do if c:IsA("Tool") or c.Name == "Stand Arrow" then itemName = c.Name; break end end end
+        if (o.Name == "Stand Arrow" or o:FindFirstChild("Stand Arrow") or o:IsA("Tool")) then
+            local isEffect = string.find(string.lower(itemName), "effect") or string.find(string.lower(itemName), "hit")
+            local pos = Vector3.new(0, 50, 0)
+            pcall(function() pos = o:GetPivot().Position end)
+            if not isEffect and pos.Y > -50 then
+                applyESP(o, Color3.fromRGB(230,190,0), itemName)
+                espTrackedItems[o] = true
             end
         end
-        
-        -- People & NPC ESP
-        local live = workspace:FindFirstChild("Live")
-        if live then 
-            for _, v in pairs(live:GetChildren()) do
-                if v:IsA("Model") and v:FindFirstChild("HumanoidRootPart") and v ~= live:FindFirstChild(player.Name) then
-                    local isP = Players:GetPlayerFromCharacter(v)
-                    if isP and espPeople then 
-                        applyESP(v, Color3.fromRGB(0,180,255), v.Name)
-                    elseif not isP and espNPC then 
-                        applyESP(v, Color3.fromRGB(50,220,50), v.Name)
-                    elseif v:FindFirstChild("V63_HL") then 
-                        removeESP(v) 
+    end
+end)
+workspace.DescendantRemoving:Connect(function(o)
+    if espTrackedItems[o] then
+        removeESP(o)
+        espTrackedItems[o] = nil
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.5) do
+        pcall(function()
+            -- Validate existing tracked items first
+            if espItems then
+                for o, _ in pairs(espTrackedItems) do
+                    local isValid = false
+                    if o and o.Parent == workspace then
+                        if o.Name == "Stand Arrow" or o:FindFirstChild("Stand Arrow") or o:IsA("Tool") then
+                            isValid = true
+                        end
                     end
+                    
+                    if not isValid then
+                        pcall(function()
+                            if o:FindFirstChild("V63_HL") then o.V63_HL:Destroy() end
+                            if o:FindFirstChild("V63_BOX") then o.V63_BOX:Destroy() end
+                            if o:FindFirstChild("V63_BB") then o.V63_BB:Destroy() end
+                        end)
+                        espTrackedItems[o] = nil
+                    end
+                end
+                
+                for _, o in pairs(workspace:GetChildren()) do
+                    if (o.Name == "Stand Arrow" or o:FindFirstChild("Stand Arrow") or o:IsA("Tool")) then
+                        local itemName = o.Name
+                        if itemName == "Model" then for _, c in pairs(o:GetChildren()) do if c:IsA("Tool") or c.Name == "Stand Arrow" then itemName = c.Name; break end end end
+                        local isEffect = string.find(string.lower(itemName), "effect") or string.find(string.lower(itemName), "hit")
+                        local pos = Vector3.new(0, 50, 0)
+                        pcall(function() pos = o:GetPivot().Position end)
+                        if not isEffect and pos.Y > -50 then
+                            applyESP(o, Color3.fromRGB(230,190,0), itemName)
+                            espTrackedItems[o] = true
+                        end
+                    end
+                end
+            else
+                -- Clean up item ESP when disabled
+                for obj, _ in pairs(espTrackedItems) do
+                    if obj and obj.Parent then removeESP(obj) end
+                end
+                espTrackedItems = {}
+            end
+            
+            -- People & NPC ESP (only scan Live folder)
+            local live = workspace:FindFirstChild("Live")
+            if live then 
+                local myChar = live:FindFirstChild(player.Name)
+                for _, v in pairs(live:GetChildren()) do
+                    if v:IsA("Model") and v:FindFirstChild("HumanoidRootPart") and v ~= myChar then
+                        local isP = Players:GetPlayerFromCharacter(v)
+                        if isP and espPeople then 
+                            applyESP(v, Color3.fromRGB(0,180,255), v.Name)
+                        elseif not isP and espNPC then 
+                            applyESP(v, Color3.fromRGB(50,220,50), v.Name)
+                        elseif v:FindFirstChild("V63_HL") then 
+                            removeESP(v) 
+                        end
+                    end 
                 end 
-            end 
-        end
+                -- Clean up NPC/People ESP when both disabled
+                if not espPeople and not espNPC then
+                    for _, v in pairs(live:GetChildren()) do
+                        if v:FindFirstChild("V63_HL") and not Players:GetPlayerFromCharacter(v) then removeESP(v) end
+                    end
+                end
+            end
+        end)
     end
 end)
 
@@ -776,7 +1044,7 @@ end
 
 task.spawn(function()
     while task.wait(0.1) do -- Faster check
-        if (autoQuest or autoRaid) and currentTarget and not isHoveringMenu then
+        if (autoQuest or autoRaid or autoLvlFarm) and currentTarget and not isHoveringMenu then
             for key, enabled in pairs(autoSkills) do 
                 if enabled then 
                     if key == "E" then 
@@ -799,7 +1067,7 @@ end)
 -- CLICKER
 task.spawn(function()
     while true do
-        if (autoQuest or autoRaid) and currentTarget and currentTarget:FindFirstChild("Humanoid") and currentTarget.Humanoid.Health > 0 and not isHoveringMenu and not dragging then
+        if (autoQuest or autoRaid or autoLvlFarm) and currentTarget and currentTarget:FindFirstChild("Humanoid") and currentTarget.Humanoid.Health > 0 and not isHoveringMenu and not dragging then
             VIM:SendMouseButtonEvent(0,0,0,true,game,0); task.wait(0.12); VIM:SendMouseButtonEvent(0,0,0,false,game,0); task.wait(0.08)
         else task.wait(0.5) end
     end
@@ -814,6 +1082,7 @@ raidToggleBtn.MouseButton1Click:Connect(function() autoRaid = not autoRaid; upda
 restartToggleBtn.MouseButton1Click:Connect(function() autoRestart = not autoRestart; updateRestart(autoRestart) end)
 autoStatsBtn.MouseButton1Click:Connect(function() autoAddStats = not autoAddStats; updateAutoStats(autoAddStats) end)
 prestigeBtn.MouseButton1Click:Connect(function() autoPrestige = not autoPrestige; updatePrestige(autoPrestige); if autoPrestige then currentTarget = nil; targetCFrame = nil end end)
+lvlFarmBtn.MouseButton1Click:Connect(function() autoLvlFarm = not autoLvlFarm; updateLvlFarm(autoLvlFarm); if not autoLvlFarm then currentTarget = nil; targetCFrame = nil end end)
 
 espItemsBtn.MouseButton1Click:Connect(function() espItems = not espItems; updateEspItems(espItems) end)
 espPeopleBtn.MouseButton1Click:Connect(function() espPeople = not espPeople; updateEspPeople(espPeople) end)
@@ -861,20 +1130,78 @@ local function getKiraTarget()
     for i = 1, 4 do local room = rooms:FindFirstChild("Room " .. i); local spawns = room and room:FindFirstChild("Mob Spawns")
     if spawns then for _, live in pairs(workspace.Live:GetChildren()) do if live:FindFirstChild("Humanoid") and live.Humanoid.Health > 0 and live ~= char and not string.find(string.lower(live.Name), "hostage") then
     for _, s in pairs(spawns:GetChildren()) do if (live.HumanoidRootPart.Position - s.Position).Magnitude < 100 then return live end end end end end end
+    
+    -- Only target Kira boss if we are actually in the raid map (kiraMap exists)
     for _, v in pairs(workspace.Live:GetChildren()) do if string.find(v.Name, "Yoshikage Kira") and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then return v end end; return nil
+end
+
+-- DIO 2-PHASE TARGETING
+local function getDioTarget()
+    local map = workspace:FindFirstChild("Map"); local dioMap = map and map:FindFirstChild("DIO")
+    if not dioMap then return nil end; local rooms = dioMap:FindFirstChild("Gamemode Rooms"); if not rooms then return nil end
+    local char = workspace.Live:FindFirstChild(player.Name); local hrp = char and char:FindFirstChild("HumanoidRootPart"); if not hrp then return nil end
+    for i = 1, 2 do local room = rooms:FindFirstChild("Room " .. i); local spawns = room and room:FindFirstChild("Mob Spawns")
+    if spawns then for _, live in pairs(workspace.Live:GetChildren()) do if live:FindFirstChild("Humanoid") and live.Humanoid.Health > 0 and live ~= char and not string.find(string.lower(live.Name), "hostage") then
+    for _, s in pairs(spawns:GetChildren()) do if (live.HumanoidRootPart.Position - s.Position).Magnitude < 100 then return live end end end end end end
+    for _, v in pairs(workspace.Live:GetChildren()) do if v.Name == "DIO" and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then return v end end; return nil
 end
 
 task.spawn(function()
     while task.wait(0.1) do -- Extreme Speed
         if autoRaid and RAID_BOSSES[selectedRaidBoss] then
             local char = workspace.Live:FindFirstChild(player.Name); local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if hrp then local bossData = RAID_BOSSES[selectedRaidBoss]; local found = (selectedRaidBoss == "Kira") and getKiraTarget() or nil
-            if not found then for _, v in pairs(workspace.Live:GetChildren()) do if string.find(v.Name, bossData.BossName) and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then found = v; break end end end
-            if found then currentTarget = found; summonStand(); targetCFrame = found.HumanoidRootPart.CFrame * CFrame.new(0, 9, 0) * CFrame.Angles(-math.pi/2, 0, 0) -- H=9
-            else targetCFrame = nil; local npc = findNPC(bossData.TalkName)
-            if npc then local tp = npc:GetPivot(); hrp.CFrame = tp * CFrame.new(0,0,-3.5); task.wait(0.5); VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game); task.wait(0.6); VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game); task.wait(0.5)
-            for i=1,2 do VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game); task.wait(0.2); VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game); task.wait(0.4) end
-            task.wait(1); hrp.CFrame = tp * CFrame.new(0,0,-15); task.wait(0.5); VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game); task.wait(0.2); VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game) end end end
+            if hrp then local bossData = RAID_BOSSES[selectedRaidBoss]; local found = nil
+            -- Special targeting per boss
+            if selectedRaidBoss == "Kira" then 
+                found = getKiraTarget()
+            elseif selectedRaidBoss == "Dio" then
+                found = getDioTarget()
+            else
+                -- For other bosses: search by exact boss name in Live
+                for _, v in pairs(workspace.Live:GetChildren()) do if string.find(v.Name, bossData.BossName) and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then found = v; break end end
+            end
+            -- DIO Phase 1: kill mobs if DIO exists or raid started
+            if not found and selectedRaidBoss == "Dio" then found = getDioTarget() end
+            
+            if found then 
+                currentTarget = found; summonStand(); targetCFrame = found.HumanoidRootPart.CFrame * CFrame.new(0, 9, 0) * CFrame.Angles(-math.pi/2, 0, 0) -- H=9
+            else 
+                targetCFrame = nil; currentTarget = nil
+                local npc = nil
+                if selectedRaidBoss == "Dio" then
+                    if workspace:FindFirstChild("Npcs") and workspace.Npcs:FindFirstChild("???") then npc = workspace.Npcs["???"]
+                    elseif ReplicatedStorage:FindFirstChild("assets") and ReplicatedStorage.assets:FindFirstChild("npc_cache") and ReplicatedStorage.assets.npc_cache:FindFirstChild("???") then npc = ReplicatedStorage.assets.npc_cache["???"] end
+                else
+                    npc = findNPC(bossData.TalkName)
+                end
+                
+                if npc and npc:FindFirstChild("HumanoidRootPart") then 
+                    local tp = npc.HumanoidRootPart.CFrame
+                    hrp.CFrame = tp * CFrame.new(0,0,-3.5)
+                    task.wait(0.5)
+                    VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                    task.wait(0.6)
+                    VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                    task.wait(0.5)
+                    if selectedRaidBoss == "Dio" then
+                        VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
+                        task.wait(0.2)
+                        VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
+                        task.wait(10) -- 10 seconds wait per user instruction
+                    else
+                        for i=1,2 do 
+                            VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
+                            task.wait(0.2)
+                            VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
+                            task.wait(0.4) 
+                        end
+                        -- Push player into the red ring to trigger the raid for Kira/Avdol
+                        hrp.CFrame = tp * CFrame.new(0, 0, -16) 
+                        task.wait(10)
+                    end
+                end 
+            end 
+            end -- Added missing end for 'if hrp then'
         end
     end
 end)
@@ -920,4 +1247,203 @@ task.spawn(function()
     end
 end)
 
+-- PVE MISSION BOARD AUTO FARM
+task.spawn(function()
+    while task.wait(0.5) do
+        if autoLvlFarm and selectedLvlFarm == "PVE Mission Boards" then
+            pcall(function()
+                local char = workspace.Live:FindFirstChild(player.Name)
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                if not hrp then return end
+                
+                -- PRIORITY 1: DELIVERY QUEST - search workspace.Effects for Quest Markers with "Delivery"
+                local deliveryMarker = nil
+                
+                local effects = workspace:FindFirstChild("Effects")
+                if effects then
+                    for _, obj in pairs(effects:GetChildren()) do
+                        pcall(function()
+                            local qm = obj:FindFirstChild("Quest Marker")
+                            if qm then
+                                local img = qm:FindFirstChild("Image")
+                                if img then
+                                    local title = img:FindFirstChild("Title")
+                                    if title and string.find(title.Text or "", "Delivery") then
+                                        deliveryMarker = obj
+                                    end
+                                end
+                            end
+                        end)
+                        if deliveryMarker then break end
+                    end
+                end
+                
+                if deliveryMarker then
+                    -- Teleport to the delivery marker and hold E
+                    local markerPos = nil
+                    pcall(function() markerPos = deliveryMarker:GetPivot() end)
+                    if markerPos then
+                        targetCFrame = nil; currentTarget = nil
+                        hrp.CFrame = markerPos * CFrame.new(0, 0, -3)
+                        task.wait(0.3)
+                        -- Hold E to interact
+                        VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                        task.wait(1.5)
+                        VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                        task.wait(0.5)
+                        -- Press 1 a few times to progress dialogue
+                        for i = 1, 3 do
+                            VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
+                            task.wait(0.2)
+                            VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
+                            task.wait(0.3)
+                        end
+                    end
+                    return
+                end
+                
+                -- PRIORITY 2: KILL QUEST - find NPCs with red Highlight (OutlineColor = 255,0,25)
+                local enemy = nil
+                for _, v in pairs(workspace.Live:GetChildren()) do
+                    if v ~= char and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("HumanoidRootPart") and not Players:GetPlayerFromCharacter(v) then
+                        for _, hl in pairs(v:GetChildren()) do
+                            if hl:IsA("Highlight") and hl.Name ~= "V63_HL" then
+                                -- Check if OutlineColor is red (quest target marker)
+                                local c = hl.OutlineColor
+                                if c.R > 0.9 and c.G < 0.1 and c.B < 0.2 then
+                                    enemy = v; break
+                                end
+                            end
+                        end
+                    end
+                    if enemy then break end
+                end
+                
+                if enemy then
+                    currentTarget = enemy
+                    summonStand()
+                    targetCFrame = enemy.HumanoidRootPart.CFrame * CFrame.new(0, 9, 0) * CFrame.Angles(-math.pi/2, 0, 0)
+                    return
+                end
+                
+                -- NO QUEST DETECTED - Go to the nearest Mission Board to accept one
+                targetCFrame = nil; currentTarget = nil
+                
+                local map = workspace:FindFirstChild("Map")
+                local boards = map and map:FindFirstChild("Mission Boards")
+                local pve = boards and boards:FindFirstChild("PvE")
+                if not pve then return end
+                
+                local children = pve:GetChildren()
+                if #children == 0 then return end
+                
+                -- Find the nearest board
+                local nearest = nil
+                local nearestDist = math.huge
+                for _, board in pairs(children) do
+                    local boardPos = nil
+                    pcall(function() boardPos = board:GetPivot().Position end)
+                    if boardPos then
+                        local dist = (hrp.Position - boardPos).Magnitude
+                        if dist < nearestDist then
+                            nearestDist = dist
+                            nearest = board
+                        end
+                    end
+                end
+                
+                if nearest then
+                    -- Position player in front of the board, facing it
+                    local boardCFrame = nearest:GetPivot()
+                    local frontCFrame = boardCFrame * CFrame.new(0, 0, 5)
+                    hrp.CFrame = CFrame.new(frontCFrame.Position, boardCFrame.Position)
+                    task.wait(0.1)
+                    -- Align camera behind player facing board
+                    pcall(function()
+                        local cam = workspace.CurrentCamera
+                        cam.CameraType = Enum.CameraType.Scriptable
+                        cam.CFrame = CFrame.new(frontCFrame.Position + Vector3.new(0, 2, 3), boardCFrame.Position)
+                        task.wait(0.1)
+                        cam.CameraType = Enum.CameraType.Custom
+                    end)
+                    task.wait(0.3)
+                    
+                    -- Hold E to interact with board
+                    VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                    task.wait(1.5)
+                    VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                    task.wait(0.5)
+                    
+                    -- Press 1 to accept mission
+                    VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
+                    task.wait(0.2)
+                    VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
+                    task.wait(1)
+                end
+            end)
+        end
+    end
+end)
+
+-- BOSS FARM AUTO FARM
+local bossNames = {"Akira Otoishi", "Yoshikage Kira", "Okuyasu Nijimura PRIME", "Miyamoto Musashi"}
+local currentBossIndex = 1
+
+task.spawn(function()
+    while task.wait(0.5) do
+        if autoLvlFarm and selectedLvlFarm == "Boss Farm" then
+            pcall(function()
+                local char = workspace.Live:FindFirstChild(player.Name)
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                if not hrp then return end
+                
+                -- Try to find the current boss in workspace.Live
+                local bossTarget = nil
+                local bossName = bossNames[currentBossIndex]
+                
+                for _, v in pairs(workspace.Live:GetChildren()) do
+                    if v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("HumanoidRootPart") then
+                        if string.find(v.Name, bossName) then
+                            bossTarget = v; break
+                        end
+                    end
+                end
+                
+                if bossTarget then
+                    currentTarget = bossTarget
+                    summonStand()
+                    targetCFrame = bossTarget.HumanoidRootPart.CFrame * CFrame.new(0, 9, 0) * CFrame.Angles(-math.pi/2, 0, 0)
+                else
+                    -- Boss not found or dead - move to next boss
+                    targetCFrame = nil; currentTarget = nil
+                    currentBossIndex = currentBossIndex + 1
+                    if currentBossIndex > #bossNames then
+                        currentBossIndex = 1
+                    end
+                end
+            end)
+        end
+    end
+end)
+
 updateLocale("ENG")
+
+-- Set Stand tab as active on startup
+if activeNavBtn == nil then
+    -- Trigger the first nav button click to set active state
+    for _, child in pairs(sidebar:GetChildren()) do
+        if child:IsA("TextButton") then
+            child.BackgroundColor3 = Color3.fromRGB(30,25,55)
+            child.TextColor3 = Color3.new(1,1,1)
+            local acc = child:FindFirstChild("Frame")
+            if acc then acc.Visible = true end
+            local glowStroke = Instance.new("UIStroke")
+            glowStroke.Color = Color3.fromRGB(100,70,200)
+            glowStroke.Thickness = 1
+            glowStroke.Transparency = 0.6
+            glowStroke.Parent = child
+            activeNavBtn = child
+            break
+        end
+    end
+end
