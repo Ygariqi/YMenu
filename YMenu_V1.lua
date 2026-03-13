@@ -15,7 +15,7 @@ do
     local WHITELIST_URL = "https://raw.githubusercontent.com/Ygariqi/YMenu/refs/heads/main/YMenu_Whitelist.txt"
     
     local whitelistOk, whitelist = pcall(function()
-        local raw = game:HttpGet(WHITELIST_URL)
+        local raw = game:HttpGet(WHITELIST_URL .. "?t=" .. tostring(tick()))
         local names = {}
         for line in raw:gmatch("[^\r\n]+") do
             local trimmed = line:match("^%s*(.-)%s*$")
@@ -74,6 +74,7 @@ do
         userLbl.BackgroundTransparency = 1; userLbl.Text = "Username: " .. player.Name
         userLbl.TextColor3 = Color3.fromRGB(120,120,140); userLbl.TextSize = 12; userLbl.Font = Enum.Font.Gotham; userLbl.Parent = panel
         
+
         -- Close button
         local closeBtn = Instance.new("TextButton"); closeBtn.Size = UDim2.new(0,100,0,32); closeBtn.Position = UDim2.new(0.5,-50,1,-50)
         closeBtn.BackgroundColor3 = Color3.fromRGB(255,50,50); closeBtn.Text = "CLOSE"; closeBtn.TextColor3 = Color3.new(1,1,1)
