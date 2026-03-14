@@ -1085,10 +1085,35 @@ local function getQuestData()
     if ok and data then return data[1] or data end; return nil
 end
 local function findNPC(name)
+    if not name or name == "" then return nil end
+    -- Priority 1: exact match in known NPC containers
     local paths = {workspace:FindFirstChild("Npcs"), workspace:FindFirstChild("NPCs"), ReplicatedStorage:FindFirstChild("assets") and ReplicatedStorage.assets:FindFirstChild("npc_cache")}
     for _, f in pairs(paths) do if f and f:FindFirstChild(name) then return f[name] end end
-    local live = workspace:FindFirstChild("Live"); if live and live:FindFirstChild(name) then return live[name] end
-    for _, v in pairs(workspace:GetDescendants()) do if v.Name == name and v:IsA("Model") then return v end end; return nil
+    -- Priority 2: exact match in Live (but NOT other players)
+    local live = workspace:FindFirstChild("Live")
+    if live then
+        local exact = live:FindFirstChild(name)
+        if exact and exact:FindFirstChild("HumanoidRootPart") and not Players:GetPlayerFromCharacter(exact) then return exact end
+    end
+    -- Priority 3: partial match in NPC containers (quest data names may differ from actual NPC names)
+    for _, f in pairs(paths) do
+        if f then
+            for _, npc in pairs(f:GetChildren()) do
+                if npc:IsA("Model") and npc:FindFirstChild("HumanoidRootPart") and string.find(npc.Name, name, 1, true) then
+                    return npc
+                end
+            end
+        end
+    end
+    -- Priority 4: partial match in Live (non-players only)
+    if live then
+        for _, v in pairs(live:GetChildren()) do
+            if v:IsA("Model") and v:FindFirstChild("HumanoidRootPart") and not Players:GetPlayerFromCharacter(v) and string.find(v.Name, name, 1, true) then
+                return v
+            end
+        end
+    end
+    return nil
 end
 local function isStandActive()
     local effects = workspace:FindFirstChild("Effects")
@@ -1401,13 +1426,31 @@ task.spawn(function()
         if autoQuest then
             local data = getQuestData(); local char = workspace.Live:FindFirstChild(player.Name); local hrp = char and char:FindFirstChild("HumanoidRootPart")
             if data and hrp then if data.Talk then targetCFrame = nil; currentTarget = nil
-            local nextNPC = nil; for npcName, talked in pairs(data.Talk) do if talked == false then nextNPC = npcName; break end end
-            local npcObj = findNPC(nextNPC); if npcObj then hrp.CFrame = npcObj:GetPivot() * CFrame.new(0,0,-3.5); task.wait(0.6); VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game); task.wait(0.5); VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game); task.wait(0.4)
+            -- Try ALL un-talked NPCs (pairs order is random, so try each one until we find a valid NPC)
+            local npcObj = nil
+            for npcName, talked in pairs(data.Talk) do
+                if talked == false then
+                    npcObj = findNPC(npcName)
+                    if npcObj and npcObj:FindFirstChild("HumanoidRootPart") then break end
+                    npcObj = nil -- reset if not found or no HumanoidRootPart
+                end
+            end
+            if npcObj then hrp.CFrame = npcObj:GetPivot() * CFrame.new(0,0,-3.5); task.wait(0.6); VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game); task.wait(0.5); VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game); task.wait(0.4)
             for i=1,7 do if not autoQuest then break end; VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game); task.wait(0.2); VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game); task.wait(0.3) end end
             elseif data.Defeat or data.Kills then local tbl = data.Defeat or data.Kills; local targetStr = nil
-            for n, p in pairs(tbl) do if type(p) == "number" and p < 999 then targetStr = n; break elseif type(p) ~= "number" then targetStr = n; break end end
-            local enemy = nil; for _, v in pairs(workspace.Live:GetChildren()) do if targetStr and string.find(v.Name, targetStr) and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then enemy = v; break end end
-            if enemy then currentTarget = enemy; summonStand(); targetCFrame = enemy.HumanoidRootPart.CFrame * CFrame.new(0, 9, 0) * CFrame.Angles(-math.pi/2, 0, 0) -- H=9
+            -- Find an incomplete kill target
+            for n, p in pairs(tbl) do
+                if type(p) == "table" then
+                    if (p.Current or 0) < (p.Target or 999) then targetStr = n; break end
+                elseif type(p) == "number" and p < 999 then targetStr = n; break
+                elseif type(p) ~= "number" then targetStr = n; break end
+            end
+            local enemy = nil; for _, v in pairs(workspace.Live:GetChildren()) do
+                if targetStr and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("HumanoidRootPart") and not Players:GetPlayerFromCharacter(v) then
+                    if v.Name == targetStr or string.find(v.Name, targetStr, 1, true) then enemy = v; break end
+                end
+            end
+            if enemy then currentTarget = enemy; summonStand(); targetCFrame = enemy.HumanoidRootPart.CFrame * CFrame.new(0, 9, 0) * CFrame.Angles(-math.pi/2, 0, 0)
             else targetCFrame = nil; currentTarget = nil end end end
         end
     end
