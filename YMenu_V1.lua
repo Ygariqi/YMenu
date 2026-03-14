@@ -1080,50 +1080,120 @@ local function getConj()
 end
 local function getQuestData()
     local slotData = player.PlayerData:FindFirstChild("SlotData"); if not slotData then return nil end
-    local obj = slotData:FindFirstChild("CurrentQuests") or slotData:FindFirstChild("TrackedQuest"); if not obj then return nil end
-    local ok, data = pcall(function() return HttpService:JSONDecode(obj.Value) end)
-    if ok and data then return data[1] or data end; return nil
+    local questNames = {"CurrentQuests", "TrackedQuest", "Storyline", "StorylineQuest", "MainQuest", "Quest", "QuestData"}
+    for _, qName in pairs(questNames) do
+        local obj = slotData:FindFirstChild(qName)
+        if obj and obj.Value and obj.Value ~= "" then
+            local ok, data = pcall(function() return HttpService:JSONDecode(obj.Value) end)
+            if ok and data then
+                -- data is an array of quests — find the first one with INCOMPLETE objectives
+                local quests = (data[1] ~= nil) and data or {data}
+                for _, quest in ipairs(quests) do
+                    -- Only process Storyline quests
+                    if not quest.Name or string.find(quest.Name, "Storyline", 1, true) then
+                    -- Check Talk quests: find one with at least one NPC not yet talked to (false)
+                    if quest.Talk then
+                        for npcName, talked in pairs(quest.Talk) do
+                            if talked == false then return quest end
+                        end
+                    end
+                    -- Check Defeat/Kills quests
+                    if quest.Defeat then
+                        for n, p in pairs(quest.Defeat) do
+                            if type(p) == "number" and p < 999 then return quest end
+                            if type(p) == "table" and (p.Current or 0) < (p.Target or 999) then return quest end
+                        end
+                    end
+                    if quest.Kills then
+                        for n, p in pairs(quest.Kills) do
+                            if type(p) == "number" and p < 999 then return quest end
+                            if type(p) == "table" and (p.Current or 0) < (p.Target or 999) then return quest end
+                        end
+                    end
+                    end -- Storyline filter
+                end -- for quest
+            end -- if ok
+        end -- if obj
+    end -- for qName
+    return nil
 end
 local function findNPC(name)
     if not name or name == "" then return nil end
-    -- Priority 1: exact match in known NPC containers
+    -- Priority 1: exact match in known NPC containers (NO HRP requirement — handles Power Box etc.)
     local paths = {workspace:FindFirstChild("Npcs"), workspace:FindFirstChild("NPCs"), ReplicatedStorage:FindFirstChild("assets") and ReplicatedStorage.assets:FindFirstChild("npc_cache")}
     for _, f in pairs(paths) do if f and f:FindFirstChild(name) then return f[name] end end
     -- Priority 2: exact match in Live (but NOT other players)
     local live = workspace:FindFirstChild("Live")
     if live then
         local exact = live:FindFirstChild(name)
-        if exact and exact:FindFirstChild("HumanoidRootPart") and not Players:GetPlayerFromCharacter(exact) then return exact end
+        if exact and not Players:GetPlayerFromCharacter(exact) then return exact end
     end
-    -- Priority 3: partial match in NPC containers (quest data names may differ from actual NPC names)
+    -- Priority 3: partial match in NPC containers
     for _, f in pairs(paths) do
         if f then
             for _, npc in pairs(f:GetChildren()) do
-                if npc:IsA("Model") and npc:FindFirstChild("HumanoidRootPart") and string.find(npc.Name, name, 1, true) then
-                    return npc
-                end
+                if string.find(npc.Name, name, 1, true) then return npc end
             end
         end
     end
-    -- Priority 4: partial match in Live (non-players only)
+    -- Priority 4: partial match in Live (non-players only, prefer models with HRP)
     if live then
+        local fallback = nil
         for _, v in pairs(live:GetChildren()) do
-            if v:IsA("Model") and v:FindFirstChild("HumanoidRootPart") and not Players:GetPlayerFromCharacter(v) and string.find(v.Name, name, 1, true) then
-                return v
+            if not Players:GetPlayerFromCharacter(v) and string.find(v.Name, name, 1, true) then
+                if v:FindFirstChild("HumanoidRootPart") then return v end
+                fallback = v
             end
         end
+        if fallback then return fallback end
     end
+    return nil
+end
+-- Safe position getter for NPCs (works with and without HumanoidRootPart)
+local function getNpcCFrame(npc)
+    if npc:FindFirstChild("HumanoidRootPart") then return npc.HumanoidRootPart.CFrame end
+    local ok, cf = pcall(function() return npc:GetPivot() end)
+    if ok and cf then return cf end
+    if npc:FindFirstChild("Part") then return npc.Part.CFrame end
+    for _, p in pairs(npc:GetDescendants()) do if p:IsA("BasePart") then return p.CFrame end end
     return nil
 end
 local function isStandActive()
     local effects = workspace:FindFirstChild("Effects")
-    if effects then local stand = effects:FindFirstChild("." .. player.Name .. "'s Stand") or effects:FindFirstChild(player.Name .. "'s Stand")
-    if stand and stand:FindFirstChild("HumanoidRootPart") then return true end end; return false
+    if not effects then return false end
+    -- Check multiple possible stand name formats
+    local standNames = {
+        "." .. player.Name .. "'s Stand",
+        player.Name .. "'s Stand",
+        player.Name .. "'s stand"
+    }
+    for _, sName in pairs(standNames) do
+        local stand = effects:FindFirstChild(sName)
+        if stand then return true end -- Don't require HumanoidRootPart — stand may still be loading
+    end
+    -- Fallback: check if any child contains player name and "Stand"
+    for _, v in pairs(effects:GetChildren()) do
+        if string.find(v.Name, player.Name, 1, true) and string.find(v.Name, "Stand", 1, true) then return true end
+    end
+    return false
 end
 local lastSummon = 0
+local standWasActive = false
 local function summonStand()
-    if tick() - lastSummon < 4 then return end 
-    if not isStandActive() then VIM:SendKeyEvent(true, Enum.KeyCode.Tab, false, game); task.wait(0.1); VIM:SendKeyEvent(false, Enum.KeyCode.Tab, false, game); lastSummon = tick() end
+    local active = isStandActive()
+    if active then standWasActive = true; return end -- Stand is out, do nothing
+    -- Stand is NOT active
+    if standWasActive then
+        -- Stand was just deactivated (maybe by game mechanic) — wait before resummoning
+        standWasActive = false
+        lastSummon = tick() -- reset cooldown
+        return
+    end
+    if tick() - lastSummon < 6 then return end -- 6s cooldown to avoid rapid toggling
+    VIM:SendKeyEvent(true, Enum.KeyCode.Tab, false, game)
+    task.wait(0.1)
+    VIM:SendKeyEvent(false, Enum.KeyCode.Tab, false, game)
+    lastSummon = tick()
 end
 
 --// V63: ADVANCED ESP LOGIC
@@ -1422,36 +1492,144 @@ task.spawn(function()
 end)
 
 task.spawn(function()
+    -- Debug label for auto quest
+    local debugLbl = Instance.new("TextLabel")
+    debugLbl.Size = UDim2.new(0,500,0,100); debugLbl.Position = UDim2.new(0,10,0,10)
+    debugLbl.BackgroundColor3 = Color3.new(0,0,0); debugLbl.BackgroundTransparency = 0.5
+    debugLbl.TextColor3 = Color3.new(1,1,0); debugLbl.TextSize = 12; debugLbl.Font = Enum.Font.Code
+    debugLbl.TextWrapped = true; debugLbl.TextXAlignment = Enum.TextXAlignment.Left; debugLbl.TextYAlignment = Enum.TextYAlignment.Top
+    debugLbl.Visible = false; debugLbl.ZIndex = 9999
+    pcall(function() debugLbl.Parent = game:GetService("CoreGui") end)
+    if not debugLbl.Parent then debugLbl.Parent = player:WaitForChild("PlayerGui") end
+
     while task.wait(0.1) do -- Extreme Speed
         if autoQuest then
+            debugLbl.Visible = true
             local data = getQuestData(); local char = workspace.Live:FindFirstChild(player.Name); local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if data and hrp then if data.Talk then targetCFrame = nil; currentTarget = nil
-            -- Try ALL un-talked NPCs (pairs order is random, so try each one until we find a valid NPC)
-            local npcObj = nil
-            for npcName, talked in pairs(data.Talk) do
-                if talked == false then
-                    npcObj = findNPC(npcName)
-                    if npcObj and npcObj:FindFirstChild("HumanoidRootPart") then break end
-                    npcObj = nil -- reset if not found or no HumanoidRootPart
+            if not data then
+                local slotNames = "[AutoQuest] No quest data found!\nSlotData children: "
+                pcall(function()
+                    local sd = player.PlayerData:FindFirstChild("SlotData")
+                    if sd then
+                        for _, c in pairs(sd:GetChildren()) do
+                            slotNames = slotNames .. c.Name .. "(" .. c.ClassName .. "), "
+                        end
+                    end
+                end)
+                debugLbl.Text = slotNames
+            elseif not hrp then
+                debugLbl.Text = "[AutoQuest] No character/HRP found"
+            elseif data.Talk then
+                targetCFrame = nil; currentTarget = nil
+                local dbgTalk = "[AutoQuest] TALK quest\nNPCs: "
+                for npcName, talked in pairs(data.Talk) do
+                    dbgTalk = dbgTalk .. npcName .. "=" .. tostring(talked) .. ", "
                 end
-            end
-            if npcObj then hrp.CFrame = npcObj:GetPivot() * CFrame.new(0,0,-3.5); task.wait(0.6); VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game); task.wait(0.5); VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game); task.wait(0.4)
-            for i=1,7 do if not autoQuest then break end; VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game); task.wait(0.2); VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game); task.wait(0.3) end end
-            elseif data.Defeat or data.Kills then local tbl = data.Defeat or data.Kills; local targetStr = nil
-            -- Find an incomplete kill target
-            for n, p in pairs(tbl) do
-                if type(p) == "table" then
-                    if (p.Current or 0) < (p.Target or 999) then targetStr = n; break end
-                elseif type(p) == "number" and p < 999 then targetStr = n; break
-                elseif type(p) ~= "number" then targetStr = n; break end
-            end
-            local enemy = nil; for _, v in pairs(workspace.Live:GetChildren()) do
-                if targetStr and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("HumanoidRootPart") and not Players:GetPlayerFromCharacter(v) then
-                    if v.Name == targetStr or string.find(v.Name, targetStr, 1, true) then enemy = v; break end
+                -- Try ALL un-talked NPCs
+                local npcObj = nil
+                local triedNames = ""
+                for npcName, talked in pairs(data.Talk) do
+                    if talked == false then
+                        triedNames = triedNames .. npcName .. " "
+                        npcObj = findNPC(npcName)
+                        if npcObj then
+                            local cf = getNpcCFrame(npcObj)
+                            if cf then
+                                dbgTalk = dbgTalk .. "\nFOUND: " .. npcObj.Name .. " at " .. tostring(cf.Position)
+                                break
+                            end
+                        end
+                        npcObj = nil
+                    end
                 end
+                if not npcObj then dbgTalk = dbgTalk .. "\nNOT FOUND! Tried: " .. triedNames end
+                debugLbl.Text = dbgTalk
+
+                if npcObj then
+                    local cf = getNpcCFrame(npcObj)
+                    if cf then
+                        hrp.CFrame = cf * CFrame.new(0,0,-3.5)
+                        task.wait(0.6)
+                        VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game); task.wait(0.5); VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game); task.wait(0.4)
+                        for i=1,7 do if not autoQuest then break end; VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game); task.wait(0.2); VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game); task.wait(0.3) end
+                    end
+                end
+            elseif data.Defeat or data.Kills then
+                local tbl = data.Defeat or data.Kills; local targetStr = nil
+                local dbgKill = "[AutoQuest] KILL quest\nTargets: "
+                for n, p in pairs(tbl) do dbgKill = dbgKill .. n .. "=" .. tostring(p) .. ", " end
+                local lowestCount = math.huge
+                for n, p in pairs(tbl) do
+                    -- Skip completed targets: true = done, string = info text
+                    if p == true or type(p) == "string" then
+                        -- completed, skip
+                    elseif type(p) == "table" then
+                        local cur = p.Current or 0
+                        local tgt = p.Target or 999
+                        if cur < tgt and cur < lowestCount then lowestCount = cur; targetStr = n end
+                    elseif type(p) == "number" then
+                        -- Pick the one with LOWEST count (least progress = most incomplete)
+                        if p < lowestCount then lowestCount = p; targetStr = n end
+                    elseif p == false then
+                        targetStr = n; lowestCount = -1; break -- false = not started, highest priority
+                    end
+                end
+                dbgKill = dbgKill .. "\nSearching: " .. tostring(targetStr)
+                
+                -- LOCK ON: if we already have a target and it's still alive, keep fighting it
+                if currentTarget and currentTarget.Parent and currentTarget:FindFirstChild("Humanoid") and currentTarget.Humanoid.Health > 0 then
+                    dbgKill = dbgKill .. "\nLOCKED ON: " .. currentTarget.Name .. " HP=" .. math.floor(currentTarget.Humanoid.Health)
+                    summonStand()
+                    targetCFrame = currentTarget.HumanoidRootPart.CFrame * CFrame.new(0, 9, 0) * CFrame.Angles(-math.pi/2, 0, 0)
+                    debugLbl.Text = dbgKill
+                else
+                    -- Target is dead or missing — search for new one
+                    currentTarget = nil; targetCFrame = nil
+                    local enemy = nil
+                    local primeMatch = nil
+                    local partialMatch = nil
+                    for _, v in pairs(workspace.Live:GetChildren()) do
+                        if targetStr and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("HumanoidRootPart") and not Players:GetPlayerFromCharacter(v) then
+                            if v.Name == targetStr then enemy = v; break end
+                            if string.find(v.Name, targetStr, 1, true) then
+                                -- Prefer non-PRIME, but keep PRIME as fallback
+                                if string.find(v.Name, "PRIME", 1, true) then
+                                    primeMatch = v
+                                else
+                                    partialMatch = v
+                                end
+                            end
+                        end
+                    end
+                    if not enemy then enemy = partialMatch or primeMatch end
+                    
+                    if enemy then
+                        dbgKill = dbgKill .. "\nFOUND: " .. enemy.Name
+                        currentTarget = enemy; summonStand(); targetCFrame = enemy.HumanoidRootPart.CFrame * CFrame.new(0, 9, 0) * CFrame.Angles(-math.pi/2, 0, 0)
+                    else
+                        -- Enemy not spawned — try to talk to NPC to spawn it
+                        dbgKill = dbgKill .. "\nNOT FOUND! Trying to talk to NPC..."
+                        local npcToTalk = findNPC(targetStr)
+                        if npcToTalk then
+                            local cf = getNpcCFrame(npcToTalk)
+                            if cf then
+                                dbgKill = dbgKill .. "\nTalking to: " .. npcToTalk.Name
+                                hrp.CFrame = cf * CFrame.new(0,0,-3.5)
+                                task.wait(0.6)
+                                VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game); task.wait(0.5); VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game); task.wait(0.4)
+                                for i=1,3 do if not autoQuest then break end; VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game); task.wait(0.2); VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game); task.wait(0.3) end
+                            end
+                        end
+                    end
+                    debugLbl.Text = dbgKill
+                end
+            else
+                local dbgRaw = "[AutoQuest] Unknown quest format\nKeys: "
+                for k, v in pairs(data) do dbgRaw = dbgRaw .. tostring(k) .. " " end
+                debugLbl.Text = dbgRaw
             end
-            if enemy then currentTarget = enemy; summonStand(); targetCFrame = enemy.HumanoidRootPart.CFrame * CFrame.new(0, 9, 0) * CFrame.Angles(-math.pi/2, 0, 0)
-            else targetCFrame = nil; currentTarget = nil end end end
+        else
+            debugLbl.Visible = false
         end
     end
 end)
