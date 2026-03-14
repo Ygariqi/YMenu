@@ -11,6 +11,7 @@ local player = Players.LocalPlayer
 
 --// CONFIG
 local KEYS_GIST_ID = "aad696ea538fb10d84f323e6ed436992"
+local ACTIVATION_SERVER = "https://ymenu-bot.onrender.com" -- ЗАМЕНИ после деплоя на Render!
 
 do
     local isAllowed = false
@@ -141,13 +142,23 @@ do
                     
                     statusLbl.Text = "Key valid! Processing..."
                     
-                    -- 2. Send activation to bot's local server (handles whitelist + key removal + notification)
+                    -- 2. Send activation to server (Render or localhost fallback)
+                    local activationUrl = ACTIVATION_SERVER .. "/activate?key=" .. HttpService:UrlEncode(key) .. "&user=" .. HttpService:UrlEncode(player.Name)
                     local serverOk = pcall(function()
-                        local resp = game:HttpGet("http://localhost:8765/activate?key=" .. HttpService:UrlEncode(key) .. "&user=" .. HttpService:UrlEncode(player.Name))
+                        local resp = game:HttpGet(activationUrl)
                         if resp and resp:find('"status"') and resp:find('"ok"') then
                             statusLbl.Text = "Activation processed!"
                         end
                     end)
+                    -- Fallback: try localhost if Render failed
+                    if not serverOk then
+                        serverOk = pcall(function()
+                            local resp = game:HttpGet("http://localhost:8765/activate?key=" .. HttpService:UrlEncode(key) .. "&user=" .. HttpService:UrlEncode(player.Name))
+                            if resp and resp:find('"status"') and resp:find('"ok"') then
+                                statusLbl.Text = "Activation processed!"
+                            end
+                        end)
+                    end
                     
                     -- 3. If bot unavailable, show manual activation message
                     if not serverOk then
